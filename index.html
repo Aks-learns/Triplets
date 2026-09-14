@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Triplets">
+<meta name="theme-color" content="#33392f">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<link rel="icon" href="./icon-192.png">
+<title>Triplet Trainer</title>
+<style>
+  :root{
+    --case:#232823;
+    --case-hi:#33392f;
+    --case-lo:#171a17;
+    --lcd:#a9b894;
+    --lcd-lo:#93a37e;
+    --lcd-edge:#6f7d5d;
+    --digit:#1b2416;
+    --digit-soft:#1b241659;
+    --hot:#d9541f;
+    --hot-lo:#a83d14;
+    --cool:#3f7b9e;
+    --cool-lo:#2e5c78;
+    --key:#3b423a;
+    --key-hi:#4a5247;
+    --text:#d7dcd2;
+    --text-dim:#8d968a;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--case-hi)}
+  body{
+    font-family:var(--sans);color:var(--text);
+    -webkit-user-select:none;user-select:none;touch-action:manipulation;
+    overscroll-behavior:none;
+    display:flex;justify-content:center;
+  }
+  #shell{
+    width:100%;max-width:460px;height:100dvh;min-height:560px;
+    background:linear-gradient(180deg,var(--case-hi) 0%,var(--case) 22%,var(--case) 100%);
+    display:flex;flex-direction:column;
+    padding:max(10px,env(safe-area-inset-top)) 14px max(14px,env(safe-area-inset-bottom));
+    gap:10px;overflow:hidden;
+  }
+
+  /* ---- status strip ---- */
+  .strip{display:flex;align-items:center;gap:10px;min-height:24px;flex:0 0 auto}
+  .strip .name{font-size:13px;color:var(--text-dim);letter-spacing:.01em}
+  .strip .spacer{flex:1}
+  .hearts{font-size:15px;letter-spacing:3px;color:var(--hot)}
+  .hearts .out{color:#4a5247}
+  .combo{font-family:var(--mono);font-size:13px;color:var(--cool);opacity:0;transition:opacity .2s}
+  .combo.on{opacity:1}
+  .iconbtn{background:none;border:0;color:var(--text-dim);font-size:16px;padding:4px 6px;cursor:pointer;font-family:var(--sans)}
+  .iconbtn:active{color:var(--text)}
+
+  /* ---- LCD ---- */
+  .lcd{
+    flex:1 1 auto;min-height:0;
+    background:linear-gradient(165deg,var(--lcd) 0%,var(--lcd-lo) 100%);
+    border-radius:5px;
+    border:1px solid var(--lcd-edge);
+    box-shadow:inset 0 2px 7px rgba(30,40,20,.36), 0 1px 0 var(--case-hi);
+    padding:16px 16px 12px;
+    display:flex;flex-direction:column;color:var(--digit);
+    position:relative;overflow:hidden;
+  }
+  .lcd::after{ /* dot matrix texture */
+    content:"";position:absolute;inset:0;pointer-events:none;opacity:.16;
+    background-image:radial-gradient(var(--digit) .5px,transparent .6px);
+    background-size:3px 3px;
+  }
+  .lcd.play{max-height:66vh}
+  .lcd.flash-ok{animation:ok .42s ease-out}
+  .lcd.flash-no{animation:no .42s ease-out}
+  @keyframes ok{0%{filter:brightness(1.32) saturate(.6)}100%{filter:none}}
+  @keyframes no{0%,40%{filter:brightness(.72) sepia(.5) hue-rotate(-30deg)}100%{filter:none}}
+  @media (prefers-reduced-motion:reduce){.lcd.flash-ok,.lcd.flash-no{animation:none}}
+
+  .lcdtop{display:flex;align-items:baseline;gap:8px;font-family:var(--mono);font-size:12px;opacity:.62;flex:0 0 auto}
+  .lcdtop .r{margin-left:auto}
+  #body{flex:1;min-height:0;display:flex;flex-direction:column}
+  .qwrap{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;gap:4px}
+  .prompt{font-size:13.5px;opacity:.72;text-align:center;line-height:1.35}
+  .read{
+    font-family:var(--mono);font-weight:700;text-align:center;
+    font-size:clamp(40px,15vw,66px);line-height:1.06;letter-spacing:.02em;
+    margin:6px 0;font-variant-numeric:tabular-nums;
+  }
+  .read.long{font-size:clamp(28px,10.5vw,46px)}
+  .read .sep{opacity:.3;font-weight:400;padding:0 .12em}
+  .read .blank{color:var(--digit-soft)}
+  .note{
+    font-size:14px;line-height:1.5;text-align:center;min-height:3.4em;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
+    opacity:0;transition:opacity .12s;padding:0 4px;
+  }
+  .note.on{opacity:.92}
+  .note b{font-family:var(--mono);font-weight:700;font-size:15px;display:block}
+  .segs{display:flex;gap:2px;margin-top:auto;height:9px;flex:0 0 auto}
+  .segs i{flex:1;background:var(--digit);opacity:.09;border-radius:1px}
+  .segs i.lit{opacity:.84}
+  .segs.low i.lit{background:var(--hot-lo);opacity:.9}
+
+  /* ---- keys ---- */
+  .keys{flex:0 0 auto;display:grid;gap:8px;margin-top:auto}
+  .keys.two{grid-template-columns:1fr 1fr}
+  .keys.one{grid-template-columns:1fr}
+  .key{
+    font-family:var(--mono);font-size:18px;font-weight:600;color:var(--text);
+    background:linear-gradient(180deg,var(--key-hi),var(--key));
+    border:0;border-bottom:3px solid #262b25;border-radius:7px;
+    min-height:clamp(58px,10.6vh,100px);padding:8px 6px;cursor:pointer;
+    font-variant-numeric:tabular-nums;
+    transition:transform .05s;
+  }
+  .key:active{transform:translateY(2px);border-bottom-width:1px}
+  .key:focus-visible{outline:2px solid var(--lcd);outline-offset:2px}
+  .key.hot{background:linear-gradient(180deg,var(--hot),var(--hot-lo));border-bottom-color:#7d2c0c}
+  .key.cool{background:linear-gradient(180deg,var(--cool),var(--cool-lo));border-bottom-color:#22475c}
+  .key.ghost{background:none;border:1px solid var(--key-hi);border-bottom-width:1px;min-height:46px;font-size:15px;color:var(--text-dim);font-family:var(--sans)}
+  .key[disabled]{opacity:.45}
+  .key.right{background:linear-gradient(180deg,#5f8f4e,#446b37);border-bottom-color:#2f4c26}
+  .key.wrong{background:linear-gradient(180deg,#9c3b24,#6f2816);border-bottom-color:#4d1c0f}
+  .key .sub{display:block;font-family:var(--sans);font-size:11.5px;font-weight:400;opacity:.72;margin-top:3px}
+
+  /* ---- lists inside lcd ---- */
+  .scroll{overflow-y:auto;-webkit-overflow-scrolling:touch;flex:1;min-height:0;margin:6px -4px 0;padding:0 4px}
+  .row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid rgba(27,36,22,.14);font-size:14px}
+  .row:last-child{border-bottom:0}
+  .row .t{font-family:var(--mono);font-weight:700;font-size:15px;min-width:104px;font-variant-numeric:tabular-nums}
+  .row .m{font-size:12px;opacity:.66;flex:1;text-align:right}
+  .pips{display:flex;gap:2px}
+  .pips i{width:7px;height:7px;border-radius:50%;background:var(--digit);opacity:.18}
+  .pips i.on{opacity:.8}
+  .head{font-size:12.5px;opacity:.6;margin:12px 0 2px;font-weight:600}
+  .head:first-child{margin-top:2px}
+  .big{font-family:var(--mono);font-weight:700;font-size:52px;text-align:center;line-height:1;font-variant-numeric:tabular-nums}
+  .cap{font-size:12.5px;opacity:.62;text-align:center;margin-top:5px}
+  .statrow{display:flex;justify-content:space-between;font-size:13px;padding:5px 0;opacity:.85}
+  .statrow span:last-child{font-family:var(--mono);font-weight:600}
+  .title{font-family:var(--mono);font-size:21px;font-weight:700;letter-spacing:-.01em;text-align:center;margin-top:4px}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:4px}
+  .chip{font-family:var(--mono);font-size:12.5px;font-weight:600;text-align:center;padding:7px 2px;border-radius:4px;
+    background:rgba(27,36,22,.08);border:1px solid rgba(27,36,22,.14);font-variant-numeric:tabular-nums}
+  .chip.s1{background:rgba(27,36,22,.16)}.chip.s2{background:rgba(27,36,22,.3)}
+  .chip.s3{background:rgba(27,36,22,.58);color:var(--lcd)}.chip.s4{background:rgba(27,36,22,.8);color:var(--lcd)}
+  .chip.weak{border-color:var(--hot);border-width:1.5px}
+  .chip.off{opacity:.3}
+  .sub2{font-size:13px;opacity:.65;text-align:center;margin-top:6px;line-height:1.45}
+  .float{position:absolute;left:0;right:0;top:38%;text-align:center;font-family:var(--mono);font-weight:700;font-size:30px;color:var(--digit);pointer-events:none;animation:rise .7s ease-out forwards}
+  @keyframes rise{0%{opacity:.85;transform:translateY(0)}100%{opacity:0;transform:translateY(-34px)}}
+</style>
+</head>
+<body>
+<div id="shell">
+  <div class="strip">
+    <span class="name" id="mname">Triplet Trainer</span>
+    <span class="combo" id="combo"></span>
+    <span class="spacer"></span>
+    <span class="hearts" id="hearts"></span>
+    <span class="name" id="score"></span>
+    <button class="iconbtn" id="sound" aria-label="Sound">♪</button>
+    <button class="iconbtn" id="back" aria-label="Back" style="display:none">✕</button>
+  </div>
+
+  <div class="lcd" id="lcd">
+    <div class="lcdtop"><span id="lt-l"></span><span class="r" id="lt-r"></span></div>
+    <div id="body"></div>
+  </div>
+
+  <div class="keys" id="keys"></div>
+</div>
+
+<script>
+"use strict";
+const $=s=>document.getElementById(s);
+
+/* ─────────────── data ─────────────── */
+const PRIMS=[
+  {t:[3,4,5],g:1},{t:[5,12,13],g:1},{t:[8,15,17],g:1},{t:[7,24,25],g:1},
+  {t:[20,21,29],g:1},{t:[9,40,41],g:1},{t:[12,35,37],g:2},{t:[11,60,61],g:2},
+  {t:[28,45,53],g:2},{t:[16,63,65],g:2},{t:[33,56,65],g:2},{t:[48,55,73],g:2},
+  {t:[13,84,85],g:2},{t:[36,77,85],g:2},{t:[39,80,89],g:2},{t:[65,72,97],g:2},
+  {t:[20,99,101],g:3},{t:[60,91,109],g:3},{t:[119,120,169],g:3}
+];
+const DIFFS={core:1,full:2,all:3};
+const key=t=>t.join("-");
+const isTrip=(a,b,c)=>a*a+b*b===c*c;
+const rnd=n=>Math.floor(Math.random()*n);
+const pick=a=>a[rnd(a.length)];
+const shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=rnd(i+1);[a[i],a[j]]=[a[j],a[i]];}return a;};
+
+function primPool(){const g=DIFFS[S.diff];return PRIMS.filter(p=>p.g<=g);}
+/* every triple in scope: primitive (k=1) plus multiples up to hyp 200 */
+function fullPool(){
+  const out=[];
+  primPool().forEach(p=>{
+    out.push({t:p.t,base:p.t,k:1});
+    for(let k=2;k<=20;k++){
+      const c=p.t[2]*k; if(c>200)break;
+      out.push({t:p.t.map(x=>x*k),base:p.t,k});
+    }
+  });
+  return out;
+}
+
+/* ─────────────── save ─────────────── */
+const SAVE="pyth-trainer:v1";
+/* claude.ai artifact storage when present; browser storage when the file is opened on its own */
+const STORE={
+  has(){return !!(window.storage&&window.storage.get);},
+  async get(){
+    if(this.has()){try{const r=await window.storage.get(SAVE); if(r&&r.value)return r.value;}catch(e){}}
+    try{return localStorage.getItem(SAVE);}catch(e){}
+    return null;
+  },
+  async set(v){
+    if(this.has()){try{await window.storage.set(SAVE,v);return;}catch(e){}}
+    try{localStorage.setItem(SAVE,v);}catch(e){}
+  }
+};
+let D={best:{},xp:0,runs:0,mastery:{},day:0,last:"",diff:"full",sound:false};
+async function load(){
+  try{const v=await STORE.get(); if(v)D=Object.assign(D,JSON.parse(v));}catch(e){}
+  S.diff=DIFFS[D.diff]?D.diff:"full"; S.sound=!!D.sound;
+  const today=new Date().toDateString();
+  if(D.last!==today){
+    const y=new Date(Date.now()-864e5).toDateString();
+    D.day=(D.last===y)?(D.day||0)+1:1; D.last=today; save();
+  }
+}
+let saveTimer=null;
+function save(){clearTimeout(saveTimer);saveTimer=setTimeout(()=>STORE.set(JSON.stringify(D)),350);}
+function mark(k,ok){
+  const m=D.mastery[k]||{r:0,w:0}; ok?m.r++:m.w++; D.mastery[k]=m;
+}
+function strength(k){const m=D.mastery[k];if(!m||m.r+m.w===0)return 0;
+  return Math.max(0,Math.min(5,Math.round((m.r-m.w*1.4)/1.2)));}
+/* weak triplets come round more often */
+function weightedPrim(){
+  const pool=primPool(),w=pool.map(p=>{const m=D.mastery[key(p.t)];
+    if(!m||m.r+m.w===0)return 3; const acc=m.r/(m.r+m.w); return 1+4*(1-acc);});
+  let s=w.reduce((a,b)=>a+b,0),x=Math.random()*s;
+  for(let i=0;i<pool.length;i++){x-=w[i];if(x<=0)return pool[i];}
+  return pool[pool.length-1];
+}
+
+/* ─────────────── question makers ─────────────── */
+function scaled(p,maxK){
+  const max=Math.min(maxK||12,Math.floor(200/p.t[2]));
+  const k=max<2?1:1+rnd(max);
+  return{t:p.t.map(x=>x*k),base:p.t,k};
+}
+function qSnap(){
+  const p=weightedPrim(),s=scaled(p,10),[a,b,c]=s.t;
+  const real=Math.random()<.5;
+  if(real)return{kind:"snap",trip:s.t,base:p.t,ans:"yes",
+    why:`<b>${a}² + ${b}² = ${c}²</b>${s.k>1?`&nbsp; — that's ${p.t.join("-")} × ${s.k}`:``}`,pk:key(p.t)};
+  let f,why;
+  for(let i=0;i<40;i++){
+    if(Math.random()<.62){ /* wrong hypotenuse */
+      const d=pick([1,1,2,-1,-1,-2,3]); const nc=c+d;
+      if(nc<=b||isTrip(a,b,nc))continue;
+      f=[a,b,nc]; why=`<b>${a}² + ${b}² = ${a*a+b*b}</b> → c = ${c}, not ${nc}`; break;
+    }else{ /* wrong leg */
+      const d=pick([1,1,2,-1,-2]); const nb=b+d;
+      if(nb<=a||nb>=c||isTrip(a,nb,c))continue;
+      const sum=a*a+nb*nb,rt=Math.sqrt(sum);
+      f=[a,nb,c]; why=`<b>${a}² + ${nb}² = ${sum}</b>${Number.isInteger(rt)?`&nbsp; → c = ${rt}`:`&nbsp; — not a square`}`; break;
+    }
+  }
+  if(!f){f=[a,b,c+1];why=`<b>${a}² + ${b}² = ${a*a+b*b}</b> → c = ${c}`;}
+  return{kind:"snap",trip:f,base:p.t,ans:"no",why,pk:key(p.t)};
+}
+function qFill(){
+  const p=weightedPrim(),s=scaled(p,9),[a,b,c]=s.t;
+  const hide=pick([2,2,2,1,1,0]);
+  const right=s.t[hide];
+  let must,rest;
+  if(hide===2){must=a+b;rest=[c+1,c-1,c+2,c-2,c+3];}
+  else if(hide===1){must=c-a;rest=[b+1,b-1,b+2,b-2];}
+  else{must=c-b;rest=[a+1,a-1,a+2,a+3];}
+  const opts=[right];
+  if(must>0&&must!==right)opts.push(must);
+  shuffle(rest).forEach(v=>{if(opts.length<4&&v>0&&!opts.includes(v))opts.push(v);});
+  let n=right+3;while(opts.length<4){if(!opts.includes(n)&&n>0)opts.push(n);n++;}
+  const trap=(opts.includes(must)&&must!==right)
+    ?(hide===2?` Not ${must} — add the squares, not the sides.`
+              :` Not ${must} — subtract the squares, not the sides.`):"";
+  return{kind:"fill",trip:s.t,hide,base:p.t,ans:String(right),opts:shuffle(opts).map(String),
+    why:`<b>${s.t.join(" · ")}${s.k>1?` = ${p.t.join("-")} × ${s.k}`:``}</b>${trap}`,pk:key(p.t)};
+}
+function qScale(){
+  const p=weightedPrim();
+  const max=Math.floor(200/p.t[2]); if(max<2)return qFill();
+  const k=2+rnd(Math.min(max-1,11));
+  const opts=[p.t];
+  shuffle(primPool().slice()).forEach(o=>{if(opts.length<4&&key(o.t)!==key(p.t))opts.push(o.t);});
+  return{kind:"scale",trip:p.t.map(x=>x*k),base:p.t,ans:key(p.t),
+    opts:shuffle(opts).map(key),why:`<b>${p.t.map(x=>x*k).join("-")} = ${p.t.join("-")} × ${k}</b>`,pk:key(p.t)};
+}
+const MAKERS={snap:qSnap,fill:qFill,scale:qScale};
+function makeQ(mode){return mode==="blitz"?MAKERS[pick(["snap","snap","fill","scale"])]():MAKERS[mode]();}
+
+/* ─────────────── audio ─────────────── */
+let AC=null;
+function beep(f,d,type){
+  if(!S.sound)return;
+  try{
+    AC=AC||new (window.AudioContext||window.webkitAudioContext)();
+    const o=AC.createOscillator(),g=AC.createGain();
+    o.type=type||"square";o.frequency.value=f;
+    g.gain.setValueAtTime(.05,AC.currentTime);
+    g.gain.exponentialRampToValueAtTime(.0001,AC.currentTime+d);
+    o.connect(g);g.connect(AC.destination);o.start();o.stop(AC.currentTime+d);
+  }catch(e){}
+}
+
+/* ─────────────── state ─────────────── */
+const MODES={
+  snap:{name:"Real or fake",dur:6200,floor:4000,lives:3},
+  fill:{name:"Missing side",dur:10000,floor:6500,lives:3},
+  scale:{name:"Find the base",dur:8500,floor:5500,lives:3},
+  blitz:{name:"60-second blitz",dur:0,floor:0,lives:0}
+};
+let S={view:"home",mode:null,diff:"full",sound:false,score:0,lives:3,combo:0,best:0,
+  right:0,wrong:0,q:null,end:0,span:0,raf:0,lock:false,missed:[],run:false};
+
+function mult(){return S.combo>=20?4:S.combo>=10?3:S.combo>=5?2:1;}
+
+/* ─────────────── render ─────────────── */
+function chrome(){
+  $("mname").textContent=S.view==="play"?MODES[S.mode].name:"Triplet Trainer";
+  $("score").textContent=S.view==="play"?String(S.score):"";
+  $("back").style.display=S.view==="home"?"none":"inline-block";
+  $("sound").style.display=S.view==="home"?"inline-block":"none";
+  $("sound").textContent=S.sound?"♪":"♪̸";
+  $("sound").style.color=S.sound?"var(--cool)":"var(--text-dim)";
+  const h=$("hearts");
+  if(S.view==="play"&&S.mode!=="blitz"){
+    h.innerHTML=[0,1,2].map(i=>`<span class="${i<S.lives?"":"out"}">●</span>`).join("");
+  }else h.innerHTML="";
+  const c=$("combo");
+  if(S.view==="play"&&mult()>1){c.textContent="×"+mult();c.classList.add("on");}
+  else c.classList.remove("on");
+}
+
+function home(){
+  $("lcd").classList.remove("play");
+  S.view="home";S.run=false;cancelAnimationFrame(S.raf);chrome();
+  const lvl=1+Math.floor(D.xp/600);
+  $("lt-l").textContent="Level "+lvl;
+  $("lt-r").textContent=D.day>1?"Day "+D.day:"";
+  const b=D.best||{};
+  const seen=PRIMS.filter(p=>D.mastery[key(p.t)]).length;
+  $("body").innerHTML=`
+    <div class="title">Pythagorean triplets</div>
+    <div class="sub2">Six minutes of this beats an hour of staring at the table.</div>
+    <div class="scroll">
+      <div class="head">${seen?`${seen} of ${PRIMS.length} met — darker means stronger`:"Tap a mode to start"}</div>
+      <div class="grid">${PRIMS.map(p=>{const st=strength(key(p.t)),m=D.mastery[key(p.t)];
+        const weak=m&&m.r+m.w>=3&&m.r/(m.r+m.w)<.6, off=p.g>DIFFS[S.diff];
+        return `<div class="chip s${Math.min(4,st)}${weak?" weak":""}${off?" off":""}">${p.t.join("·")}</div>`;}).join("")}</div>
+      <div class="head">Best scores</div>
+      ${Object.keys(MODES).map(m=>`<div class="statrow"><span>${MODES[m].name}</span><span>${b[m]||0}</span></div>`).join("")}
+      <div class="cap" style="margin:14px 0 2px" id="offline"></div>
+    </div>`;
+  offlineNote();
+  $("keys").className="keys two";
+  $("keys").innerHTML=`
+    <button class="key hot" data-go="snap">Real or fake<span class="sub">3 lives</span></button>
+    <button class="key" data-go="fill">Missing side<span class="sub">3 lives</span></button>
+    <button class="key" data-go="scale">Find the base<span class="sub">3 lives</span></button>
+    <button class="key cool" data-go="blitz">Blitz<span class="sub">60 seconds</span></button>
+    <button class="key ghost" data-diff="1">Range: ${({core:"the first 6",full:"16 triplets",all:"all 19"})[S.diff]}</button>
+    <button class="key ghost" data-table="1">Table</button>`;
+}
+
+function table(){
+  $("lcd").classList.remove("play");
+  S.view="table";chrome();
+  $("lt-l").textContent="Reference";$("lt-r").textContent="";
+  const rows=PRIMS.map(p=>{
+    const st=strength(key(p.t)),m=D.mastery[key(p.t)];
+    return `<div class="row"><span class="t">${p.t.join(" · ")}</span>
+      <span class="pips">${[0,1,2,3,4].map(i=>`<i class="${i<st?"on":""}"></i>`).join("")}</span>
+      <span class="m">${m?`${m.r}/${m.r+m.w}`:"—"}</span></div>`;}).join("");
+  $("body").innerHTML=`<div class="scroll">
+    <div class="head">Primitives, and how well you know them</div>${rows}
+    <div class="head">Where they hide</div>
+    <div class="row" style="display:block;font-size:13px;line-height:1.5;border:0">
+      Most exam triangles are one of these scaled up. 24-32-40 is 3-4-5 × 8. 30-72-78 is 5-12-13 × 6.
+      Learn to spot the ratio, not the numbers.</div>
+    <div class="head">Same hypotenuse, different triangle</div>
+    <div class="row" style="display:block;font-size:13px;line-height:1.5;border:0">
+      65 → 16-63, 33-56, 25-60, 39-52. &nbsp; 85 → 13-84, 36-77, 40-75, 51-68.</div>
+    <div class="head">Not triplets, still needed</div>
+    <div class="row" style="display:block;font-size:13px;line-height:1.5;border:0">
+      45-45-90 is 1 : 1 : √2. &nbsp; 30-60-90 is 1 : √3 : 2.</div>
+  </div>`;
+  $("keys").className="keys one";
+  $("keys").innerHTML=`<button class="key ghost" data-home="1">Back</button>`;
+}
+
+function start(mode){
+  S.mode=mode;S.view="play";S.score=0;S.lives=MODES[mode].lives;S.combo=0;S.best=0;
+  S.right=0;S.wrong=0;S.missed=[];S.lock=false;S.run=true;
+  if(mode==="blitz"){S.end=performance.now()+60000;S.span=60000;}
+  beep(880,.05);
+  next();
+}
+
+function next(){
+  if(!S.run)return;
+  S.q=makeQ(S.mode);S.lock=false;
+  const m=MODES[S.mode];
+  if(S.mode!=="blitz"){
+    const span=Math.max(m.floor,m.dur-S.right*160);
+    S.span=span;S.end=performance.now()+span;
+  }
+  paint();tick();
+}
+
+function paint(){
+  chrome();
+  $("lcd").classList.add("play");
+  const q=S.q;
+  $("lt-l").textContent=S.combo>=3?S.combo+" in a row":"";
+  $("lt-r").textContent=(S.right+S.wrong>0)?`${S.right}/${S.right+S.wrong}`:"";
+  let read,prompt;
+  if(q.kind==="snap"){
+    prompt="Is this a right triangle?";
+    read=q.trip.join('<span class="sep">·</span>');
+  }else if(q.kind==="fill"){
+    prompt="Fill the gap.";
+    read=q.trip.map((v,i)=>i===q.hide?'<span class="blank">?</span>':v).join('<span class="sep">·</span>');
+  }else{
+    prompt="Which triplet is this scaled from?";
+    read=q.trip.join('<span class="sep">·</span>');
+  }
+  const chars=q.trip.join("").length;
+  $("body").innerHTML=`
+    <div class="qwrap">
+      <div class="prompt">${prompt}</div>
+      <div class="read ${chars>7?"long":""}" id="read">${read}</div>
+      <div class="note" id="note"></div>
+    </div>
+    <div class="segs" id="segs">${Array(22).fill('<i class="lit"></i>').join("")}</div>`;
+  const k=$("keys");
+  if(q.kind==="snap"){
+    k.className="keys two";
+    k.innerHTML=`<button class="key cool" data-a="yes">Yes</button><button class="key hot" data-a="no">No</button>`;
+  }else{
+    k.className="keys two";
+    k.innerHTML=q.opts.map(o=>`<button class="key" data-a="${o}">${o.replace(/-/g," · ")}</button>`).join("");
+  }
+}
+
+function tick(){
+  cancelAnimationFrame(S.raf);
+  const loop=()=>{
+    if(!S.run)return;
+    const left=S.end-performance.now(),f=Math.max(0,left/S.span);
+    const segs=$("segs");
+    if(segs){
+      const lit=Math.ceil(f*22),kids=segs.children;
+      for(let i=0;i<22;i++)kids[i].classList.toggle("lit",i<lit);
+      segs.classList.toggle("low",f<.28);
+    }
+    if(left<=0){ if(S.mode==="blitz")return over(); if(!S.lock)return answer(null); }
+    S.raf=requestAnimationFrame(loop);
+  };
+  S.raf=requestAnimationFrame(loop);
+}
+
+function answer(val){
+  if(S.lock)return; S.lock=true;
+  const q=S.q,ok=val===q.ans;
+  const left=Math.max(0,S.end-performance.now());
+  mark(q.pk,ok);
+  document.querySelectorAll("#keys .key").forEach(b=>{
+    if(b.dataset.a===q.ans)b.classList.add("right");
+    else if(b.dataset.a===val)b.classList.add("wrong");
+    b.disabled=true;
+  });
+  const lcd=$("lcd"),note=$("note");
+  if(ok){
+    S.right++;S.combo++;S.best=Math.max(S.best,S.combo);
+    const pts=Math.round((100+60*(left/S.span))*mult());
+    S.score+=pts;
+    lcd.classList.add("flash-ok");beep(1180,.07);
+    const f=document.createElement("div");f.className="float";f.textContent="+"+pts;
+    lcd.appendChild(f);setTimeout(()=>f.remove(),700);
+    if(S.mode==="blitz")S.end+=1000;
+  }else{
+    S.wrong++;S.combo=0;
+    if(S.missed.length<6)S.missed.push(q);
+    lcd.classList.add("flash-no");beep(160,.16,"sawtooth");
+    if(S.mode==="blitz")S.end-=4000; else S.lives--;
+  }
+  note.innerHTML=q.why;note.classList.add("on");
+  chrome();
+  setTimeout(()=>lcd.classList.remove("flash-ok","flash-no"),450);
+  setTimeout(()=>{
+    if(S.mode!=="blitz"&&S.lives<=0)return over();
+    if(S.mode==="blitz"&&S.end-performance.now()<=0)return over();
+    next();
+  },ok?620:1750);
+  save();
+}
+
+function over(){
+  S.run=false;cancelAnimationFrame(S.raf);S.view="end";$("lcd").classList.remove("play");
+  D.runs=(D.runs||0)+1;D.xp=(D.xp||0)+Math.round(S.score/10);
+  const prev=D.best[S.mode]||0,rec=S.score>prev;
+  if(rec)D.best[S.mode]=S.score;
+  save();chrome();
+  const acc=S.right+S.wrong?Math.round(100*S.right/(S.right+S.wrong)):0;
+  $("lt-l").textContent=MODES[S.mode].name;
+  $("lt-r").textContent=rec?"New best":"Best "+prev;
+  $("body").innerHTML=`
+    <div style="margin-top:6px"><div class="big">${S.score}</div>
+    <div class="cap">${rec?"Your best yet.":`${S.right} right out of ${S.right+S.wrong}, ${acc}% accurate, best run ${S.best}`}</div></div>
+    <div class="scroll">
+      ${S.missed.length?`<div class="head">Worth a second look</div>${
+        S.missed.map(q=>`<div class="row" style="display:block;line-height:1.45">
+          <div class="t" style="min-width:0;font-size:15px">${q.trip.join(" · ")}</div>
+          <div style="font-size:13px;opacity:.78;margin-top:2px">${q.why.replace(/<\/?b>/g,"")}</div></div>`).join("")
+      }`:`<div class="head">Clean round</div><div class="row" style="border:0;display:block;line-height:1.5">
+          Nothing missed. Widen the range or move to blitz.</div>`}
+    </div>`;
+  $("keys").className="keys two";
+  $("keys").innerHTML=`
+    <button class="key hot" data-go="${S.mode}">Again</button>
+    <button class="key ghost" data-home="1">Menu</button>`;
+  beep(rec?1320:440,.2,"triangle");
+}
+
+/* ─────────────── input ─────────────── */
+document.addEventListener("click",e=>{
+  const b=e.target.closest("button");if(!b)return;
+  if(b.dataset.go){start(b.dataset.go);return;}
+  if(b.dataset.home){home();return;}
+  if(b.dataset.table){table();return;}
+  if(b.dataset.diff){
+    const o=["core","full","all"];S.diff=o[(o.indexOf(S.diff)+1)%3];D.diff=S.diff;save();home();return;}
+  if(b.id==="sound"){S.sound=!S.sound;D.sound=S.sound;save();chrome();beep(880,.06);return;}
+  if(b.id==="back"){home();return;}
+  if(b.dataset.a!==undefined)answer(b.dataset.a);
+});
+document.addEventListener("keydown",e=>{
+  if(S.view!=="play")return;
+  const keys=[...document.querySelectorAll("#keys .key")];
+  if(e.key>="1"&&e.key<="4"&&keys[+e.key-1])keys[+e.key-1].click();
+  if(S.q&&S.q.kind==="snap"){if(e.key==="y")answer("yes");if(e.key==="n")answer("no");}
+});
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden&&S.view==="play"&&S.run){S.run=false;cancelAnimationFrame(S.raf);home();}
+});
+
+function offlineNote(){
+  const el=$("offline"); if(!el)return;
+  if(!("serviceWorker" in navigator)){el.textContent="";return;}
+  navigator.serviceWorker.getRegistration().then(r=>{
+    const el2=$("offline"); if(!el2)return;
+    el2.textContent=(r&&navigator.serviceWorker.controller)?"Saved to this device — works with no signal":"Stay online for a moment while it saves itself";
+  }).catch(()=>{});
+}
+if("serviceWorker" in navigator){
+  window.addEventListener("load",()=>{
+    navigator.serviceWorker.register("./sw.js").then(()=>{
+      if(navigator.serviceWorker.controller)offlineNote();
+      navigator.serviceWorker.addEventListener("controllerchange",offlineNote);
+    }).catch(()=>{});
+  });
+}
+load().then(home);
+</script>
+</body>
+</html>
